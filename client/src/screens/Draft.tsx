@@ -1,32 +1,75 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { LeaderboardRow, Player, WeekMatchesResponse } from '@shared/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { LeaderboardRow, Player, Week, WeekMatchesResponse } from '@shared/types';
 import { api } from '../api/client';
 import { usePolling } from '../hooks/usePolling';
 
 export default function Draft() {
-  const { data: weekData, refresh } = usePolling<WeekMatchesResponse | null>(async () => {
-    const week = await api.currentWeek().catch(() => null);
-    if (!week) return null;
-    return api.weekMatches(week.id);
-  }, 15_000);
+  const { data: weeks } = usePolling<Week[]>(() => api.weeks(), 15_000);
   const { data: players } = usePolling<Player[]>(() => api.players(), 30_000);
   const { data: board } = usePolling<LeaderboardRow[]>(() => api.leaderboard('season'), 30_000);
+
+  const [weekId, setWeekId] = useState<number | null>(null);
+  const { data: weekData, refresh } = usePolling<WeekMatchesResponse | null>(
+    () => (weekId === null ? Promise.resolve(null) : api.weekMatches(weekId)),
+    15_000,
+    [weekId]
+  );
 
   // captains[i] is the captain player id of team i (teams sorted by label)
   const [captains, setCaptains] = useState<(number | null)[]>([null, null, null, null, null]);
   const [picks, setPicks] = useState<{ teamIdx: number; playerId: number }[]>([]);
   const [phase, setPhase] = useState<'captains' | 'draft'>('captains');
   const [toast, setToast] = useState<string | null>(null);
+  const hydratedWeek = useRef<number | null>(null);
+  const suppressSuggest = useRef(false);
+
+  // Default selection: the newest week still in 'draft', else the newest week.
+  useEffect(() => {
+    if (weekId === null && weeks && weeks.length > 0) {
+      const drafting = [...weeks].reverse().find((w) => w.status === 'draft');
+      setWeekId((drafting ?? weeks[weeks.length - 1]).id);
+    }
+  }, [weeks, weekId]);
+
+  // When switching weeks, load whatever draft is already saved on the server
+  // so re-opening this screen shows the real rosters instead of a blank slate.
+  useEffect(() => {
+    if (!weekData || weekData.week.id !== weekId || hydratedWeek.current === weekId) return;
+    hydratedWeek.current = weekId;
+    suppressSuggest.current = false;
+    const teams = weekData.teams;
+    const hasRosters = teams.some((t) => t.players.length > 0);
+    if (hasRosters || teams.some((t) => t.captain_id !== null)) {
+      setCaptains(teams.map((t) => t.captain_id));
+      setPicks(
+        teams.flatMap((t, i) =>
+          t.players
+            .filter((p) => p.id !== t.captain_id)
+            .map((p) => ({ teamIdx: i, playerId: p.id }))
+        )
+      );
+      setPhase(hasRosters ? 'draft' : 'captains');
+    } else {
+      setCaptains([null, null, null, null, null]);
+      setPicks([]);
+      setPhase('captains');
+    }
+  }, [weekData, weekId]);
 
   const teams = weekData?.teams ?? [];
 
-  // Suggest the season top 5 as captains (falls back to none in week 1).
+  // Suggest the season top 5 as captains — but never over a saved draft
+  // (checked against server data, not local state, so hydration in the same
+  // commit can't be stomped) and not after the user hit "Clear captains".
   useEffect(() => {
-    if (board && board.length >= 5 && captains.every((c) => c === null)) {
+    if (!weekData || weekData.week.id !== weekId || suppressSuggest.current) return;
+    const hasSaved = weekData.teams.some((t) => t.captain_id !== null || t.players.length > 0);
+    if (hasSaved) return;
+    if (board && board.length >= 5 && picks.length === 0 && captains.every((c) => c === null)) {
       setCaptains(board.slice(0, 5).map((r) => r.player_id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board]);
+  }, [board, weekId, weekData]);
 
   const activePlayers = useMemo(
     () => (players ?? []).filter((p) => p.active === 1),
@@ -51,7 +94,7 @@ export default function Draft() {
     return ids.filter((id): id is number => id !== null);
   };
 
-  const nameOf = (id: number) => activePlayers.find((p) => p.id === id)?.name ?? `#${id}`;
+  const nameOf = (id: number) => (players ?? []).find((p) => p.id === id)?.name ?? `#${id}`;
 
   const pickPlayer = (playerId: number) => {
     if (phase === 'captains') {
@@ -64,16 +107,16 @@ export default function Draft() {
   };
 
   const submit = async () => {
-    if (!weekData) return;
+    if (!weekData || weekId === null) return;
     try {
-      await api.submitDraft(weekData.week.id, {
+      await api.submitDraft(weekId, {
         teams: teams.map((t, i) => ({
           week_team_id: t.id,
           captain_id: captains[i],
           player_ids: rosterOf(i),
         })),
       });
-      setToast('Draft saved! Generate the schedule from Admin when ready.');
+      setToast(`Week ${weekData.week.week_number} rosters saved! Generate the schedule from Admin when ready.`);
       void refresh();
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
@@ -81,16 +124,39 @@ export default function Draft() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  if (!weekData) {
+  if (!weeks || weeks.length === 0) {
     return <div className="page"><div className="empty"><b>No week to draft</b>Create the week in Admin first.</div></div>;
   }
 
   const captainsSet = captains.every((c) => c !== null);
   const pool = activePlayers.filter((p) => !takenIds.has(p.id));
+  const savedCount = teams.reduce((n, t) => n + t.players.length, 0);
 
   return (
     <div className="page">
-      <h1 className="page-title">Week {weekData.week.week_number} Draft</h1>
+      <h1 className="page-title">
+        {weekData ? `Week ${weekData.week.week_number} Draft` : 'Draft'}
+      </h1>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="tag">Drafting for:</span>
+        {weeks.map((w) => (
+          <button
+            key={w.id}
+            className={`btn ${weekId === w.id ? 'btn-amber' : 'btn-ghost'}`}
+            onClick={() => setWeekId(w.id)}
+          >
+            Wk {w.week_number}
+          </button>
+        ))}
+        {weekData && (
+          <span className="tag">
+            {weekData.week.date} · {weekData.week.status.replace('_', ' ')}
+            {savedCount > 0 ? ` · ${savedCount} players saved` : ' · no rosters saved yet'}
+          </span>
+        )}
+      </div>
+
       <p className="page-sub">
         {phase === 'captains'
           ? 'Pick the 5 captains — the season top 5 are pre-suggested. Tap a pool player to fill the next empty captain slot.'
@@ -103,7 +169,13 @@ export default function Draft() {
             <button className="btn btn-amber" disabled={!captainsSet} onClick={() => setPhase('draft')}>
               Captains locked — start draft
             </button>
-            <button className="btn btn-ghost" onClick={() => setCaptains([null, null, null, null, null])}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                suppressSuggest.current = true;
+                setCaptains([null, null, null, null, null]);
+              }}
+            >
               Clear captains
             </button>
           </>
@@ -114,7 +186,7 @@ export default function Draft() {
             </button>
             <button className="btn btn-ghost" onClick={() => setPhase('captains')}>← Back to captains</button>
             <button className="btn btn-amber" onClick={() => void submit()} disabled={pool.length > 0}>
-              Submit rosters
+              Save rosters
             </button>
             {pool.length > 0 && <span className="tag" style={{ alignSelf: 'center' }}>{pool.length} players left to draft</span>}
           </>
