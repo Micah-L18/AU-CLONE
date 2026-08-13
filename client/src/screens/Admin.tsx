@@ -77,7 +77,16 @@ export default function Admin() {
         <div className="panel">
           <span className="tag">Weeks</span>
           <div className="form-row">
-            <input type="date" value={weekDate} onChange={(e) => setWeekDate(e.target.value)} />
+            <input
+              type="date"
+              className="date-input"
+              value={weekDate}
+              onChange={(e) => setWeekDate(e.target.value)}
+              onClick={(e) => {
+                // Anywhere on the field opens the calendar, not just the icon.
+                try { e.currentTarget.showPicker?.(); } catch { /* needs user gesture; click qualifies */ }
+              }}
+            />
             <button className="btn btn-amber" onClick={() => void createWeek()}>
               Create week {nextWeekNumber}
             </button>
