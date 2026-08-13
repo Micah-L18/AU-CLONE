@@ -3,12 +3,12 @@ import type { AwardsResponse, LeaderboardRow, Week } from '@shared/types';
 import { api } from '../api/client';
 import { usePolling } from '../hooks/usePolling';
 
-type SortKey = 'total' | 'avg_per_week';
+type SortKey = 'name' | 'total' | 'weeks_played' | 'avg_per_week';
 
 export default function Leaderboard() {
   const [scope, setScope] = useState<'season' | 'week'>('season');
   const [weekId, setWeekId] = useState<number | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>('total');
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'total', dir: 'desc' });
 
   const { data: weeks } = usePolling<Week[]>(() => api.weeks(), 30_000);
   const { data: rows } = usePolling<LeaderboardRow[]>(
@@ -18,7 +18,21 @@ export default function Leaderboard() {
   );
   const { data: awards } = usePolling<AwardsResponse>(() => api.awards(), 8000);
 
-  const sorted = [...(rows ?? [])].sort((a, b) => b[sortKey] - a[sortKey]);
+  // Clicking the active column flips direction; a new column starts with its
+  // natural direction (A→Z for names, high→low for numbers).
+  const toggleSort = (key: SortKey) =>
+    setSort((s) =>
+      s.key === key
+        ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' }
+        : { key, dir: key === 'name' ? 'asc' : 'desc' }
+    );
+
+  const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 'desc' ? ' ▾' : ' ▴') : '');
+
+  const sorted = [...(rows ?? [])].sort((a, b) => {
+    const cmp = sort.key === 'name' ? a.name.localeCompare(b.name) : a[sort.key] - b[sort.key];
+    return sort.dir === 'asc' ? cmp : -cmp;
+  });
 
   return (
     <div className="page">
@@ -69,10 +83,10 @@ export default function Leaderboard() {
           <thead>
             <tr>
               <th>#</th>
-              <th>Player</th>
-              <th onClick={() => setSortKey('total')}>Points {sortKey === 'total' ? '▾' : ''}</th>
-              <th>Weeks</th>
-              <th onClick={() => setSortKey('avg_per_week')}>Avg/Wk {sortKey === 'avg_per_week' ? '▾' : ''}</th>
+              <th onClick={() => toggleSort('name')}>Player{arrow('name')}</th>
+              <th onClick={() => toggleSort('total')}>Points{arrow('total')}</th>
+              <th onClick={() => toggleSort('weeks_played')}>Weeks{arrow('weeks_played')}</th>
+              <th onClick={() => toggleSort('avg_per_week')}>Avg/Wk{arrow('avg_per_week')}</th>
             </tr>
           </thead>
           <tbody>

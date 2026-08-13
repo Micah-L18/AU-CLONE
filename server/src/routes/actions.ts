@@ -3,12 +3,23 @@ import { z } from 'zod';
 import type { DB } from '../db.js';
 
 const createSchema = z.object({
-  code: z.string().min(1).regex(/^[a-z0-9_]+$/, 'code must be lowercase snake_case'),
+  code: z.string().min(1).regex(/^[a-z0-9_]+$/, 'code must be lowercase snake_case').optional(),
   label: z.string().min(1),
   points: z.number(),
   sort_order: z.number().int().optional(),
   active: z.union([z.literal(0), z.literal(1)]).optional(),
 });
+
+/** 'Serve Streak!' -> 'serve_streak'; suffixes _2, _3… on collision. */
+function slugFromLabel(db: DB, label: string): string {
+  const base =
+    label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'action';
+  let slug = base;
+  for (let n = 2; db.prepare('SELECT 1 FROM actions WHERE code = ?').get(slug); n++) {
+    slug = `${base}_${n}`;
+  }
+  return slug;
+}
 
 const patchSchema = z.object({
   label: z.string().min(1).optional(),
@@ -31,7 +42,10 @@ export function actionsRouter(db: DB): Router {
   router.post('/', (req, res) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    const { code, label, points, sort_order, active } = parsed.data;
+    const { label, points, sort_order, active } = parsed.data;
+    // The label is what humans see ("Serve Streak" is fine); the code is a
+    // stable internal id, derived from the label when not supplied.
+    const code = parsed.data.code ?? slugFromLabel(db, label);
     const exists = db.prepare('SELECT id FROM actions WHERE code = ?').get(code);
     if (exists) return res.status(409).json({ error: `action code '${code}' already exists` });
     const info = db

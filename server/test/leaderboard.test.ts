@@ -70,6 +70,23 @@ describe('leaderboard aggregation', () => {
     expect(awards.best_average.player_id).toBe(p1);
   });
 
+  it('creates actions from a human label alone, deriving the code', async () => {
+    const ctx = makeApp();
+    const first = await request(ctx.app)
+      .post('/api/actions')
+      .send({ label: 'Serve Streak!', points: 15 });
+    expect(first.status).toBe(201);
+    expect(first.body.code).toBe('serve_streak');
+    expect(first.body.label).toBe('Serve Streak!');
+
+    // Same label again gets a distinct auto-suffixed code.
+    const second = await request(ctx.app)
+      .post('/api/actions')
+      .send({ label: 'Serve Streak', points: 20 });
+    expect(second.status).toBe(201);
+    expect(second.body.code).toBe('serve_streak_2');
+  });
+
   it('custom actions score with their configured points', async () => {
     const ctx = makeApp();
     const { schedule, playerIds } = await seedLeague(ctx);

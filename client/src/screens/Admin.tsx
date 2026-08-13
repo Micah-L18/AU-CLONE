@@ -19,7 +19,7 @@ function AdminInner() {
   const { data: settings, refresh: refreshSettings } = usePolling<Record<string, string>>(() => api.settings(), 30_000);
 
   const [newPlayer, setNewPlayer] = useState('');
-  const [newAction, setNewAction] = useState({ code: '', label: '', points: '' });
+  const [newAction, setNewAction] = useState({ label: '', points: '' });
   const [weekDate, setWeekDate] = useState(new Date().toISOString().slice(0, 10));
   const [toast, setToast] = useState<string | null>(null);
 
@@ -40,10 +40,10 @@ function AdminInner() {
 
   const addAction = async () => {
     const points = Number(newAction.points);
-    if (!newAction.code || !newAction.label || Number.isNaN(points)) return say('code, label and points required');
+    if (!newAction.label.trim() || Number.isNaN(points)) return say('label and points required');
     try {
-      await api.createAction({ code: newAction.code, label: newAction.label, points });
-      setNewAction({ code: '', label: '', points: '' });
+      await api.createAction({ label: newAction.label.trim(), points });
+      setNewAction({ label: '', points: '' });
       void refreshActions();
       say('Action added');
     } catch (e) { fail(e); }
@@ -200,10 +200,9 @@ function AdminInner() {
             </div>
           ))}
           <div className="form-row">
-            <input placeholder="code (e.g. tip)" value={newAction.code}
-              onChange={(e) => setNewAction({ ...newAction, code: e.target.value })} />
-            <input placeholder="Label" value={newAction.label}
-              onChange={(e) => setNewAction({ ...newAction, label: e.target.value })} />
+            <input placeholder="Label (e.g. Serve Streak)" value={newAction.label}
+              onChange={(e) => setNewAction({ ...newAction, label: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && void addAction()} />
             <input placeholder="pts" type="number" style={{ maxWidth: 90 }} value={newAction.points}
               onChange={(e) => setNewAction({ ...newAction, points: e.target.value })} />
             <button className="btn btn-ghost" onClick={() => void addAction()}>Add</button>
