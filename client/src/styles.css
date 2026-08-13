@@ -322,6 +322,28 @@ a { color: inherit; text-decoration: none; }
 }
 .empty b { font-family: var(--display); font-size: 24px; letter-spacing: 1px; text-transform: uppercase; display: block; margin-bottom: 8px; color: var(--ink); }
 
+/* ── Admin PIN gate ── */
+.pin-pad { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 30px; }
+.pin-dots { display: flex; gap: 16px; }
+.pin-dot {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--line); transition: background 0.1s ease, border-color 0.1s ease;
+}
+.pin-dot.filled { background: var(--amber); border-color: var(--amber); }
+.pin-grid { display: grid; grid-template-columns: repeat(3, 84px); gap: 12px; }
+.pin-key {
+  height: 72px; border-radius: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  font-family: var(--display); font-size: 30px; font-weight: 700;
+  transition: transform 0.05s ease;
+}
+.pin-key:active { transform: scale(0.94); border-color: var(--amber); }
+.pin-shake { animation: shake 0.4s ease; border-color: var(--err); }
+@keyframes shake {
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
 .toast {
   position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 70;
   background: var(--panel-2); border: 1px solid var(--amber); color: var(--ink);

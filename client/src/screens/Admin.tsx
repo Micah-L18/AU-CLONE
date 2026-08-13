@@ -2,8 +2,17 @@ import { useState } from 'react';
 import type { Action, Player, Week } from '@shared/types';
 import { api } from '../api/client';
 import { usePolling } from '../hooks/usePolling';
+import PinGate, { lockAdmin } from '../components/PinGate';
 
 export default function Admin() {
+  return (
+    <PinGate>
+      <AdminInner />
+    </PinGate>
+  );
+}
+
+function AdminInner() {
   const { data: players, refresh: refreshPlayers } = usePolling<Player[]>(() => api.players(), 30_000);
   const { data: actions, refresh: refreshActions } = usePolling<Action[]>(() => api.actions(true), 30_000);
   const { data: weeks, refresh: refreshWeeks } = usePolling<Week[]>(() => api.weeks(), 30_000);
@@ -70,7 +79,15 @@ export default function Admin() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Admin</h1>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+        <h1 className="page-title">Admin</h1>
+        <button
+          className="small-btn"
+          onClick={() => { lockAdmin(); window.location.reload(); }}
+        >
+          🔒 Lock
+        </button>
+      </div>
       <p className="page-sub">Players, weeks, and the point values behind every tap.</p>
 
       <div className="admin-grid">
