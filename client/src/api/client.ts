@@ -33,6 +33,11 @@ export const api = {
   currentWeek: () => http<Week>('/api/weeks/current'),
   createWeek: (body: { week_number: number; date: string }) =>
     http<{ week: Week }>('/api/weeks', { method: 'POST', body: JSON.stringify(body) }),
+  deleteWeek: (id: number, dryRun = false) =>
+    http<{ deleted: boolean; matches: number; events: number }>(
+      `/api/weeks/${id}${dryRun ? '?dry_run=1' : ''}`,
+      { method: 'DELETE' }
+    ),
   submitDraft: (weekId: number, body: DraftPayload) =>
     http(`/api/weeks/${weekId}/draft`, { method: 'POST', body: JSON.stringify(body) }),
   generateSchedule: (weekId: number) =>

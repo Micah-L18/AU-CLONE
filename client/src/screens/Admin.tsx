@@ -42,6 +42,24 @@ export default function Admin() {
 
   const nextWeekNumber = (weeks ?? []).reduce((max, w) => Math.max(max, w.week_number), 0) + 1;
 
+  const deleteWeek = async (w: Week) => {
+    try {
+      // Dry run first so the confirm can say exactly what gets destroyed.
+      const preview = await api.deleteWeek(w.id, true);
+      const warning =
+        preview.events > 0
+          ? `Delete week ${w.week_number}? This permanently removes its teams, ` +
+            `${preview.matches} matches, and ${preview.events} recorded scoring events. ` +
+            `Player season totals will drop accordingly.`
+          : `Delete week ${w.week_number}? Its teams and schedule will be removed. ` +
+            `No points have been recorded for it.`;
+      if (!window.confirm(warning)) return;
+      await api.deleteWeek(w.id);
+      void refreshWeeks();
+      say(`Week ${w.week_number} deleted`);
+    } catch (e) { fail(e); }
+  };
+
   const createWeek = async () => {
     try {
       await api.createWeek({ week_number: nextWeekNumber, date: weekDate });
@@ -84,6 +102,13 @@ export default function Admin() {
                   Generate schedule
                 </button>
               )}
+              <button
+                className="small-btn"
+                style={{ color: 'var(--err)' }}
+                onClick={() => void deleteWeek(w)}
+              >
+                Delete
+              </button>
             </div>
           ))}
 

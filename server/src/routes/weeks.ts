@@ -169,6 +169,39 @@ export function weeksRouter(db: DB): Router {
     res.json(db.prepare('SELECT * FROM weeks WHERE id = ?').get(req.params.id));
   });
 
+  // Removing a week takes its schedule AND its recorded points with it —
+  // the ?dry_run=1 form only reports what would be destroyed so the client
+  // can confirm first.
+  router.delete('/:id', (req, res) => {
+    const week = db.prepare('SELECT * FROM weeks WHERE id = ?').get(req.params.id) as
+      | { id: number }
+      | undefined;
+    if (!week) return res.status(404).json({ error: 'week not found' });
+
+    const counts = db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM matches WHERE week_id = ?) AS matches,
+           (SELECT COUNT(*) FROM events e JOIN matches m ON m.id = e.match_id
+             WHERE m.week_id = ?) AS events`
+      )
+      .get(week.id, week.id) as { matches: number; events: number };
+
+    if (req.query.dry_run === '1') {
+      return res.json({ deleted: false, ...counts });
+    }
+
+    // Matches go first so their team references never dangle; events cascade
+    // from matches, rosters cascade from week_teams.
+    const removeWeek = db.transaction(() => {
+      db.prepare('DELETE FROM matches WHERE week_id = ?').run(week.id);
+      db.prepare('DELETE FROM week_teams WHERE week_id = ?').run(week.id);
+      db.prepare('DELETE FROM weeks WHERE id = ?').run(week.id);
+    });
+    removeWeek();
+    res.json({ deleted: true, ...counts });
+  });
+
   router.get('/:id/matches', (req, res) => {
     const week = db.prepare('SELECT * FROM weeks WHERE id = ?').get(req.params.id) as
       | { id: number }

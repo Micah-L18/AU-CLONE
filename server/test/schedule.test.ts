@@ -52,6 +52,31 @@ describe('schedule generation API', () => {
     expect(byeLabels).toEqual(['A', 'D', 'B', 'E', 'C']);
   });
 
+  it('deletes a week along with its teams, matches, and events', async () => {
+    const ctx = makeApp();
+    const { week, schedule, playerIds } = await seedLeague(ctx);
+    const match = schedule.rounds[0].matches[0];
+    const actions = (await request(ctx.app).get('/api/actions')).body as { id: number; code: string }[];
+    const kill = actions.find((a) => a.code === 'kill')!;
+    await request(ctx.app)
+      .post(`/api/matches/${match.id}/events`)
+      .send({ player_id: playerIds[9], action_id: kill.id, client_id: 'del-1' });
+
+    // Dry run reports the blast radius without deleting anything.
+    const preview = await request(ctx.app).delete(`/api/weeks/${week.id}?dry_run=1`);
+    expect(preview.body).toEqual({ deleted: false, matches: 10, events: 1 });
+    expect((await request(ctx.app).get('/api/weeks')).body).toHaveLength(1);
+
+    const res = await request(ctx.app).delete(`/api/weeks/${week.id}`);
+    expect(res.body).toEqual({ deleted: true, matches: 10, events: 1 });
+    expect((await request(ctx.app).get('/api/weeks')).body).toHaveLength(0);
+    expect((await request(ctx.app).get(`/api/matches/${match.id}`)).status).toBe(404);
+    expect((await request(ctx.app).get('/api/leaderboard?scope=season')).body).toHaveLength(0);
+
+    const missing = await request(ctx.app).delete(`/api/weeks/${week.id}`);
+    expect(missing.status).toBe(404);
+  });
+
   it('rejects double-generation', async () => {
     const ctx = makeApp();
     const { week } = await seedLeague(ctx);
