@@ -1,0 +1,131 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { makeApp, seedLeague, type TestContext } from './helpers.js';
+
+interface Fixture {
+  ctx: TestContext;
+  matchId: number;
+  homeTeamId: number;
+  homePlayerIds: number[];
+  killActionId: number;
+}
+
+async function fixture(): Promise<Fixture> {
+  const ctx = makeApp();
+  const { schedule } = await seedLeague(ctx);
+  const match = schedule.rounds[0].matches[0];
+  const detail = await request(ctx.app).get(`/api/matches/${match.id}`);
+  const actions = await request(ctx.app).get('/api/actions');
+  const kill = actions.body.find((a: { code: string }) => a.code === 'kill');
+  return {
+    ctx,
+    matchId: match.id,
+    homeTeamId: match.home_team_id,
+    homePlayerIds: detail.body.home.players.map((p: { id: number }) => p.id),
+    killActionId: kill.id,
+  };
+}
+
+describe('event scoring', () => {
+  let f: Fixture;
+  beforeEach(async () => {
+    f = await fixture();
+  });
+
+  it('creates an event snapshotting the action points', async () => {
+    const res = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/events`)
+      .send({ player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'tap-1' });
+    expect(res.status).toBe(201);
+    expect(res.body.points).toBe(8);
+
+    // Retune the action; the recorded event keeps its snapshot.
+    await request(f.ctx.app).put(`/api/actions/${f.killActionId}`).send({ points: 99 });
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    expect(events.body[0].points).toBe(8);
+  });
+
+  it('is idempotent on client_id (offline retry safe)', async () => {
+    const payload = { player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'dup-1' };
+    const first = await request(f.ctx.app).post(`/api/matches/${f.matchId}/events`).send(payload);
+    const second = await request(f.ctx.app).post(`/api/matches/${f.matchId}/events`).send(payload);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(second.body.id).toBe(first.body.id);
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    expect(events.body).toHaveLength(1);
+  });
+
+  it('undo deletes a single tap', async () => {
+    const res = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/events`)
+      .send({ player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'undo-1' });
+    const del = await request(f.ctx.app).delete(`/api/events/${res.body.id}`);
+    expect(del.status).toBe(200);
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    expect(events.body).toHaveLength(0);
+  });
+
+  it('rejects inactive actions', async () => {
+    await request(f.ctx.app).put(`/api/actions/${f.killActionId}`).send({ active: 0 });
+    const res = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/events`)
+      .send({ player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'x-1' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('match finalize with win bonus', () => {
+  let f: Fixture;
+  beforeEach(async () => {
+    f = await fixture();
+  });
+
+  it('awards the tunable win bonus to each winning-roster player', async () => {
+    await request(f.ctx.app)
+      .patch(`/api/matches/${f.matchId}`)
+      .send({ status: 'final', winner_team_id: f.homeTeamId });
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    // 9 players on the winning roster, default win bonus 25.
+    expect(events.body).toHaveLength(9);
+    expect(events.body.every((e: { points: number }) => e.points === 25)).toBe(true);
+  });
+
+  it('re-finalizing with a different winner replaces the bonuses', async () => {
+    const detail = await request(f.ctx.app).get(`/api/matches/${f.matchId}`);
+    const awayTeamId = detail.body.match.away_team_id;
+    const awayPlayerIds = new Set(detail.body.away.players.map((p: { id: number }) => p.id));
+
+    await request(f.ctx.app)
+      .patch(`/api/matches/${f.matchId}`)
+      .send({ status: 'final', winner_team_id: f.homeTeamId });
+    await request(f.ctx.app)
+      .patch(`/api/matches/${f.matchId}`)
+      .send({ winner_team_id: awayTeamId });
+
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    expect(events.body).toHaveLength(9);
+    expect(events.body.every((e: { player_id: number }) => awayPlayerIds.has(e.player_id))).toBe(true);
+  });
+
+  it('reopening a final match removes win bonuses but keeps tap events', async () => {
+    await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/events`)
+      .send({ player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'keep-1' });
+    await request(f.ctx.app)
+      .patch(`/api/matches/${f.matchId}`)
+      .send({ status: 'final', winner_team_id: f.homeTeamId });
+    await request(f.ctx.app).patch(`/api/matches/${f.matchId}`).send({ status: 'pending' });
+
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    expect(events.body).toHaveLength(1);
+    expect(events.body[0].client_id).toBe('keep-1');
+  });
+
+  it('rejects a winner that is not in the match', async () => {
+    const res = await request(f.ctx.app)
+      .patch(`/api/matches/${f.matchId}`)
+      .send({ status: 'final', winner_team_id: 99999 });
+    expect(res.status).toBe(400);
+  });
+});
