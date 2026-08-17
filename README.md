@@ -28,7 +28,8 @@ npm test            # server test suite (schedule, events, win bonus, leaderboar
 
 - The `events` table is the **single source of truth**. One tap = one row: `(match, player, action, points)`.
 - `events.points` is a **snapshot** of the action's value at tap time — retuning point values in Admin never rewrites past results.
-- Leaderboards, weekly totals, and awards are all `SUM` queries over events. Nothing to keep in sync.
+- Each action carries two tunable values: **player points** go to whoever earned the action, and **team points** go to every roster teammate *except* the earner (and drive the match score). A kill can pay the hitter 8 and each teammate 2.
+- Leaderboards, weekly totals, and awards are all `SUM` queries over events (teammate credits are derived at query time). Nothing to keep in sync.
 - **Everything is tunable in Admin**: rename/re-point/disable any action, add new ones, and set the win bonus (finalizing a match awards the `win` action's current value to every player on the winning roster — re-finalizing with a different winner swaps the bonuses).
 - The bye team is never stored — it's derived as the team not playing in a round.
 

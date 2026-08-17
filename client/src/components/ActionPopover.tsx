@@ -22,7 +22,7 @@ export default function ActionPopover({ player, actions, onPick, onClose }: Prop
               <button key={a.id} className={`action-btn ${a.points < 0 ? 'negative' : ''}`} onClick={() => onPick(a)}>
                 <span className="alabel">{a.label}</span>
                 <span className="apts">
-                  {fmt(a.team_points)} team · {fmt(a.points)} player
+                  {fmt(a.points)} them · {fmt(a.team_points)} each teammate
                 </span>
               </button>
             ))}

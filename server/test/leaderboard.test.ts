@@ -34,10 +34,16 @@ describe('leaderboard aggregation', () => {
         .send({ player_id: t.player, action_id: t.action, client_id: `lb-${i}` });
     }
 
-    const season = (await request(ctx.app).get('/api/leaderboard?scope=season')).body;
+    const season = (await request(ctx.app).get('/api/leaderboard?scope=season')).body as {
+      player_id: number; total: number;
+    }[];
     expect(season[0]).toMatchObject({ player_id: p1, total: 28 });
     expect(season[1]).toMatchObject({ player_id: p2, total: 15 });
-    expect(season).toHaveLength(2);
+    // Teammate credits: p1's 8 teammates each get 2+2+3 = 7 team points,
+    // p2's 8 teammates each get 3 × 1 = 3.
+    expect(season).toHaveLength(18);
+    expect(season.filter((r) => r.total === 7)).toHaveLength(8);
+    expect(season.filter((r) => r.total === 3)).toHaveLength(8);
   });
 
   it('week scope filters to that week and awards reflect the data', async () => {
@@ -56,9 +62,11 @@ describe('leaderboard aggregation', () => {
 
     const weekBoard = (
       await request(ctx.app).get(`/api/leaderboard?scope=week&week_id=${week.id}`)
-    ).body;
-    expect(weekBoard).toHaveLength(1);
+    ).body as { total: number }[];
+    // Earner (12) + 8 teammates crediting the ace's 3 team points each.
+    expect(weekBoard).toHaveLength(9);
     expect(weekBoard[0].total).toBe(12);
+    expect(weekBoard.slice(1).every((r) => r.total === 3)).toBe(true);
 
     const awards = (await request(ctx.app).get('/api/awards')).body;
     expect(awards.champion.player_id).toBe(p1);

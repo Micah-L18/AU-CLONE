@@ -45,7 +45,7 @@ describe('event scoring', () => {
     expect(events.body[0].points).toBe(8);
   });
 
-  it('splits team (big) and player (little) points', async () => {
+  it('earner gets player points; every teammate gets the team points', async () => {
     // Default kill: 2 team points, 8 player points.
     const res = await request(f.ctx.app)
       .post(`/api/matches/${f.matchId}/events`)
@@ -54,11 +54,15 @@ describe('event scoring', () => {
     expect(res.body.points).toBe(8);
 
     const detail = await request(f.ctx.app).get(`/api/matches/${f.matchId}`);
-    expect(detail.body.home_score).toBe(2); // match score counts team points
+    expect(detail.body.home_score).toBe(2); // match score counts team points once
     expect(detail.body.away_score).toBe(0);
-    expect(detail.body.totals).toEqual([
-      { player_id: f.homePlayerIds[0], total: 8, event_count: 1 }, // leaderboard counts player points
-    ]);
+    const totals = detail.body.totals as { player_id: number; total: number; event_count: number }[];
+    const earner = totals.find((t) => t.player_id === f.homePlayerIds[0]);
+    expect(earner).toEqual({ player_id: f.homePlayerIds[0], total: 8, event_count: 1 });
+    // The other 8 rostered teammates each banked the 2 team points.
+    const mates = totals.filter((t) => t.player_id !== f.homePlayerIds[0]);
+    expect(mates).toHaveLength(8);
+    expect(mates.every((t) => t.total === 2 && t.event_count === 0)).toBe(true);
 
     // Both tracks snapshot independently at tap time.
     await request(f.ctx.app).put(`/api/actions/${f.killActionId}`).send({ team_points: 99, points: 77 });

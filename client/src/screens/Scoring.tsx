@@ -36,18 +36,30 @@ export default function Scoring() {
   useEffect(() => onQueueChange(() => setQueueVersion((n) => n + 1)), []);
 
   // Optimistic layer: server totals + taps still sitting in the local queue.
-  // Player totals accumulate "little" points; the match score accumulates
-  // each action's "big" team points.
+  // The earner banks the action's player points, every roster teammate banks
+  // the team points, and the match score accumulates team points once per tap.
   const { totalsByPlayer, extraTeamScore, pendingCount } = useMemo(() => {
     const totals = new Map<number, number>();
     for (const t of data?.totals ?? []) totals.set(t.player_id, t.total);
+    const teammates = new Map<number, number[]>();
+    for (const team of data ? [data.home, data.away] : []) {
+      for (const p of team.players) {
+        teammates.set(p.id, team.players.filter((q) => q.id !== p.id).map((q) => q.id));
+      }
+    }
     const queued = pendingForMatch(matchId);
     const actionById = new Map((actions ?? []).map((a) => [a.id, a]));
     const extraTeam = new Map<number, number>();
     for (const tap of queued) {
       const action = actionById.get(tap.action_id);
       totals.set(tap.player_id, (totals.get(tap.player_id) ?? 0) + (action?.points ?? 0));
-      extraTeam.set(tap.player_id, (extraTeam.get(tap.player_id) ?? 0) + (action?.team_points ?? 0));
+      const teamPts = action?.team_points ?? 0;
+      if (teamPts !== 0) {
+        for (const mate of teammates.get(tap.player_id) ?? []) {
+          totals.set(mate, (totals.get(mate) ?? 0) + teamPts);
+        }
+      }
+      extraTeam.set(tap.player_id, (extraTeam.get(tap.player_id) ?? 0) + teamPts);
     }
     return { totalsByPlayer: totals, extraTeamScore: extraTeam, pendingCount: queued.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,7 +196,7 @@ export default function Scoring() {
         </span>
         <span className="last-tap">
           {lastTap
-            ? <>Last: <b>{lastTap.player.name}</b> — {lastTap.action.label} ({lastTap.action.team_points > 0 ? '+' : ''}{lastTap.action.team_points} team · {lastTap.action.points > 0 ? '+' : ''}{lastTap.action.points} player)</>
+            ? <>Last: <b>{lastTap.player.name}</b> — {lastTap.action.label} ({lastTap.action.points > 0 ? '+' : ''}{lastTap.action.points} · {lastTap.action.team_points > 0 ? '+' : ''}{lastTap.action.team_points} each teammate)</>
             : 'Tap a player, then the action.'}
         </span>
         <button className="undo-btn" disabled={!lastTap} onClick={() => void undo()}>

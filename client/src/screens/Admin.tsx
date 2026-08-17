@@ -190,7 +190,7 @@ function AdminInner() {
               </span>
               <input
                 type="number"
-                title="Team (big) points — count toward the match score"
+                title="Team (big) points — credited to every roster teammate except the earner, and to the match score"
                 defaultValue={a.team_points}
                 key={`${a.id}-team-${a.team_points}`}
                 onBlur={async (e) => {
@@ -203,7 +203,7 @@ function AdminInner() {
               />
               <input
                 type="number"
-                title="Player (little) points — count toward the individual leaderboard"
+                title="Player (little) points — credited to the player who earned the action"
                 defaultValue={a.points}
                 key={`${a.id}-${a.points}`}
                 onBlur={async (e) => {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { DB } from '../db.js';
+import { CONTRIB_CTE } from './leaderboard.js';
 
 const patchSchema = z.object({
   status: z.enum(['pending', 'live', 'final']).optional(),
@@ -62,10 +63,15 @@ export function matchesRouter(db: DB): Router {
       | undefined;
     if (!match) return res.status(404).json({ error: 'match not found' });
 
+    // Per-player totals inside this match: own player points + team points
+    // credited from every teammate's events.
     const totals = db
       .prepare(
-        `SELECT player_id, SUM(points) AS total, COUNT(*) AS event_count
-         FROM events WHERE match_id = ? GROUP BY player_id`
+        `WITH ${CONTRIB_CTE}
+         SELECT c.player_id, SUM(c.pts) AS total, SUM(c.own) AS event_count
+         FROM contrib c
+         WHERE c.match_id = ?
+         GROUP BY c.player_id`
       )
       .all(match.id) as { player_id: number; total: number; event_count: number }[];
 
