@@ -136,7 +136,16 @@ export default function Draft() {
   }
 
   const captainsSet = captains.every((c) => c !== null);
-  const pool = activePlayers.filter((p) => !takenIds.has(p.id));
+  // The draft board reads like the leaderboard: best available first,
+  // unranked players alphabetical at the bottom.
+  const rankById = new Map((board ?? []).map((r, i) => [r.player_id, { rank: i + 1, total: r.total }]));
+  const pool = activePlayers
+    .filter((p) => !takenIds.has(p.id))
+    .sort((a, b) => {
+      const ra = rankById.get(a.id)?.rank ?? Infinity;
+      const rb = rankById.get(b.id)?.rank ?? Infinity;
+      return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
+    });
   const savedCount = teams.reduce((n, t) => n + t.players.length, 0);
 
   return (
@@ -204,14 +213,16 @@ export default function Draft() {
         <div className="panel pool">
           <span className="tag">Player pool ({pool.length})</span>
           {pool.map((p) => {
-            const rank = (board ?? []).findIndex((r) => r.player_id === p.id);
+            const ranked = rankById.get(p.id);
             return (
               <button key={p.id} className="pool-player" onClick={() => pickPlayer(p.id)}>
                 <span>
                   {p.name}
                   {p.position && <span className="pos-tag" style={{ marginLeft: 8 }}>{p.position}</span>}
                 </span>
-                <span className="tag">{rank >= 0 ? `#${rank + 1}` : 'unranked'}</span>
+                <span className="tag" style={ranked && ranked.rank <= 5 ? { color: 'var(--amber)' } : undefined}>
+                  {ranked ? `#${ranked.rank} · ${ranked.total} pts` : 'unranked'}
+                </span>
               </button>
             );
           })}
