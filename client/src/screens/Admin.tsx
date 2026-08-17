@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { Action, Player, Week } from '@shared/types';
+import { useRef, useState } from 'react';
+import { POSITIONS, type Action, type Player, type Position, type Week } from '@shared/types';
 import { api } from '../api/client';
 import { usePolling } from '../hooks/usePolling';
 import PinGate, { lockAdmin } from '../components/PinGate';
@@ -19,9 +19,11 @@ function AdminInner() {
   const { data: settings, refresh: refreshSettings } = usePolling<Record<string, string>>(() => api.settings(), 30_000);
 
   const [newPlayer, setNewPlayer] = useState('');
+  const [newPosition, setNewPosition] = useState<string>('');
   const [newAction, setNewAction] = useState({ label: '', points: '' });
   const [weekDate, setWeekDate] = useState(new Date().toISOString().slice(0, 10));
   const [toast, setToast] = useState<string | null>(null);
+  const csvInput = useRef<HTMLInputElement>(null);
 
   const say = (msg: string) => {
     setToast(msg);
@@ -32,8 +34,20 @@ function AdminInner() {
   const addPlayer = async () => {
     if (!newPlayer.trim()) return;
     try {
-      await api.createPlayer({ name: newPlayer.trim() });
+      await api.createPlayer({ name: newPlayer.trim(), position: (newPosition || null) as Position | null });
       setNewPlayer('');
+      setNewPosition('');
+      void refreshPlayers();
+    } catch (e) { fail(e); }
+  };
+
+  const importCsv = async (file: File) => {
+    try {
+      const result = await api.importPlayers(await file.text());
+      const parts = [`Imported ${result.imported} players`];
+      if (result.skipped.length > 0) parts.push(`${result.skipped.length} already existed`);
+      if (result.errors.length > 0) parts.push(`${result.errors.length} bad rows: ${result.errors[0]}`);
+      say(parts.join(' · '));
       void refreshPlayers();
     } catch (e) { fail(e); }
   };
@@ -210,17 +224,53 @@ function AdminInner() {
         </div>
 
         <div className="panel" style={{ gridColumn: '1 / -1' }}>
-          <span className="tag">Players ({(players ?? []).filter((p) => p.active === 1).length} active)</span>
-          <div className="form-row" style={{ maxWidth: 480 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <span className="tag">Players ({(players ?? []).filter((p) => p.active === 1).length} active)</span>
+            <button className="small-btn" onClick={() => csvInput.current?.click()}>
+              ⬆ Import CSV
+            </button>
+            <span className="tag" style={{ textTransform: 'none', letterSpacing: 0 }}>
+              format: first name, last name, position ({POSITIONS.join('/')})
+            </span>
+            <input
+              ref={csvInput}
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importCsv(file);
+                e.target.value = '';
+              }}
+            />
+          </div>
+          <div className="form-row" style={{ maxWidth: 620 }}>
             <input placeholder="New player name" value={newPlayer}
               onChange={(e) => setNewPlayer(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void addPlayer()} />
+            <select value={newPosition} onChange={(e) => setNewPosition(e.target.value)} style={{ maxWidth: 140 }}>
+              <option value="">Position…</option>
+              {POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+            </select>
             <button className="btn btn-amber" onClick={() => void addPlayer()}>Add</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0 20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0 20px' }}>
             {(players ?? []).map((p) => (
               <div key={p.id} className={`admin-row ${p.active === 0 ? 'inactive' : ''}`}>
                 <span style={{ flex: 1 }}>{p.name}</span>
+                <select
+                  className="pos-select"
+                  value={p.position ?? ''}
+                  onChange={async (e) => {
+                    try {
+                      await api.patchPlayer(p.id, { position: (e.target.value || null) as Position | null });
+                      void refreshPlayers();
+                    } catch (err) { fail(err); }
+                  }}
+                >
+                  <option value="">—</option>
+                  {POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+                </select>
                 <button
                   className="small-btn"
                   onClick={async () => {

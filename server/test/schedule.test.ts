@@ -38,6 +38,55 @@ describe('round-robin pattern', () => {
   });
 });
 
+describe('player positions and CSV import', () => {
+  it('stores a primary position on create and patch', async () => {
+    const ctx = makeApp();
+    const created = await request(ctx.app)
+      .post('/api/players')
+      .send({ name: 'Ada Setterly', position: 'Setter' });
+    expect(created.status).toBe(201);
+    expect(created.body.position).toBe('Setter');
+    const patched = await request(ctx.app)
+      .patch(`/api/players/${created.body.id}`)
+      .send({ position: 'Lib' });
+    expect(patched.body.position).toBe('Lib');
+    const bad = await request(ctx.app)
+      .post('/api/players')
+      .send({ name: 'Bad Pos', position: 'Coach' });
+    expect(bad.status).toBe(400);
+  });
+
+  it('imports a CSV roster, normalizing positions and skipping dupes', async () => {
+    const ctx = makeApp();
+    await request(ctx.app).post('/api/players').send({ name: 'Already Here' });
+    const csv = [
+      'First Name, Last Name, Position',
+      'Maya, Mercer, Setter',
+      'Theo, Walsh, libero',
+      'Rosa, Navarro, OH',
+      'Already, Here, DS',
+      'Wade, Thorne, Coach',
+      'OnlyOneField',
+      '',
+      'Nora, Hale,',
+    ].join('\n');
+    const res = await request(ctx.app).post('/api/players/import').send({ csv });
+    expect(res.status).toBe(200);
+    expect(res.body.imported).toBe(4); // Maya, Theo, Rosa, Nora
+    expect(res.body.skipped).toEqual(['Already Here']);
+    expect(res.body.errors).toHaveLength(2); // bad position + missing field
+
+    const players = (await request(ctx.app).get('/api/players')).body as {
+      name: string; position: string | null;
+    }[];
+    const byName = new Map(players.map((p) => [p.name, p.position]));
+    expect(byName.get('Maya Mercer')).toBe('Setter');
+    expect(byName.get('Theo Walsh')).toBe('Lib');
+    expect(byName.get('Rosa Navarro')).toBe('Outside');
+    expect(byName.get('Nora Hale')).toBeNull(); // position optional per-row
+  });
+});
+
 describe('schedule generation API', () => {
   it('creates 10 matches and derives the bye team per round', async () => {
     const ctx = makeApp();

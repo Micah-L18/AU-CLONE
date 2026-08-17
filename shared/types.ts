@@ -2,10 +2,14 @@
 
 export type Squad = 'varsity' | 'jv' | 'freshman' | null;
 
+export const POSITIONS = ['Setter', 'Outside', 'Opposite', 'Middle', 'Lib', 'DS'] as const;
+export type Position = (typeof POSITIONS)[number];
+
 export interface Player {
   id: number;
   name: string;
   squad: Squad;
+  position: Position | null;
   active: number; // 1 | 0
   created_at: string;
 }

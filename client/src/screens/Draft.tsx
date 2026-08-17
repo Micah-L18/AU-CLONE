@@ -95,6 +95,13 @@ export default function Draft() {
   };
 
   const nameOf = (id: number) => (players ?? []).find((p) => p.id === id)?.name ?? `#${id}`;
+  const posOf = (id: number) => (players ?? []).find((p) => p.id === id)?.position ?? null;
+  const withPos = (id: number) => (
+    <>
+      {nameOf(id)}
+      {posOf(id) && <span className="pos-tag" style={{ marginLeft: 6 }}>{posOf(id)}</span>}
+    </>
+  );
 
   const pickPlayer = (playerId: number) => {
     if (phase === 'captains') {
@@ -200,7 +207,10 @@ export default function Draft() {
             const rank = (board ?? []).findIndex((r) => r.player_id === p.id);
             return (
               <button key={p.id} className="pool-player" onClick={() => pickPlayer(p.id)}>
-                <span>{p.name}</span>
+                <span>
+                  {p.name}
+                  {p.position && <span className="pos-tag" style={{ marginLeft: 8 }}>{p.position}</span>}
+                </span>
                 <span className="tag">{rank >= 0 ? `#${rank + 1}` : 'unranked'}</span>
               </button>
             );
@@ -216,9 +226,9 @@ export default function Draft() {
                 {phase === 'draft' && i === onClockIdx && <span style={{ color: 'var(--amber)' }}>ON CLOCK</span>}
               </h4>
               <ol>
-                {captains[i] !== null && <li className="captain">© {nameOf(captains[i]!)}</li>}
+                {captains[i] !== null && <li className="captain">© {withPos(captains[i]!)}</li>}
                 {picks.filter((p) => p.teamIdx === i).map((p) => (
-                  <li key={p.playerId}>{nameOf(p.playerId)}</li>
+                  <li key={p.playerId}>{withPos(p.playerId)}</li>
                 ))}
                 {captains[i] === null && <li style={{ color: 'var(--muted)' }}>captain slot open</li>}
               </ol>

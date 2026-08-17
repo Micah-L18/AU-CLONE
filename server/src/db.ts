@@ -38,12 +38,23 @@ export function ensureDefaults(db: DB): void {
   }
 }
 
+/** Additive migrations for databases created before a column existed. */
+function migrate(db: DB): void {
+  const playerCols = (db.prepare('PRAGMA table_info(players)').all() as { name: string }[]).map(
+    (c) => c.name
+  );
+  if (!playerCols.includes('position')) {
+    db.exec('ALTER TABLE players ADD COLUMN position TEXT');
+  }
+}
+
 export function openDb(path?: string): DB {
   const dbPath = path ?? process.env.DB_PATH ?? join(__dirname, '..', 'league.db');
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  migrate(db);
   ensureDefaults(db);
   return db;
 }

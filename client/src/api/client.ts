@@ -24,10 +24,15 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   players: () => http<Player[]>('/api/players'),
-  createPlayer: (body: { name: string; squad?: string | null }) =>
+  createPlayer: (body: { name: string; squad?: string | null; position?: string | null }) =>
     http<Player>('/api/players', { method: 'POST', body: JSON.stringify(body) }),
-  patchPlayer: (id: number, body: Partial<Pick<Player, 'name' | 'squad' | 'active'>>) =>
+  patchPlayer: (id: number, body: Partial<Pick<Player, 'name' | 'squad' | 'position' | 'active'>>) =>
     http<Player>(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  importPlayers: (csv: string) =>
+    http<{ imported: number; names: string[]; skipped: string[]; errors: string[] }>(
+      '/api/players/import',
+      { method: 'POST', body: JSON.stringify({ csv }) }
+    ),
 
   weeks: () => http<Week[]>('/api/weeks'),
   currentWeek: () => http<Week>('/api/weeks/current'),
