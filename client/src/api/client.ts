@@ -56,9 +56,9 @@ export const api = {
   matchEvents: (matchId: number) => http<ScoringEvent[]>(`/api/matches/${matchId}/events`),
 
   actions: (all = false) => http<Action[]>(`/api/actions${all ? '?all=1' : ''}`),
-  createAction: (body: { code?: string; label: string; points: number; sort_order?: number }) =>
+  createAction: (body: { code?: string; label: string; points: number; team_points?: number; sort_order?: number }) =>
     http<Action>('/api/actions', { method: 'POST', body: JSON.stringify(body) }),
-  updateAction: (id: number, body: Partial<Pick<Action, 'label' | 'points' | 'sort_order' | 'active'>>) =>
+  updateAction: (id: number, body: Partial<Pick<Action, 'label' | 'points' | 'team_points' | 'sort_order' | 'active'>>) =>
     http<Action>(`/api/actions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteAction: (id: number) => http(`/api/actions/${id}`, { method: 'DELETE' }),
 

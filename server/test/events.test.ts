@@ -45,6 +45,28 @@ describe('event scoring', () => {
     expect(events.body[0].points).toBe(8);
   });
 
+  it('splits team (big) and player (little) points', async () => {
+    // Default kill: 2 team points, 8 player points.
+    const res = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/events`)
+      .send({ player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'split-1' });
+    expect(res.body.team_points).toBe(2);
+    expect(res.body.points).toBe(8);
+
+    const detail = await request(f.ctx.app).get(`/api/matches/${f.matchId}`);
+    expect(detail.body.home_score).toBe(2); // match score counts team points
+    expect(detail.body.away_score).toBe(0);
+    expect(detail.body.totals).toEqual([
+      { player_id: f.homePlayerIds[0], total: 8, event_count: 1 }, // leaderboard counts player points
+    ]);
+
+    // Both tracks snapshot independently at tap time.
+    await request(f.ctx.app).put(`/api/actions/${f.killActionId}`).send({ team_points: 99, points: 77 });
+    const events = await request(f.ctx.app).get(`/api/matches/${f.matchId}/events`);
+    expect(events.body[0].team_points).toBe(2);
+    expect(events.body[0].points).toBe(8);
+  });
+
   it('is idempotent on client_id (offline retry safe)', async () => {
     const payload = { player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'dup-1' };
     const first = await request(f.ctx.app).post(`/api/matches/${f.matchId}/events`).send(payload);

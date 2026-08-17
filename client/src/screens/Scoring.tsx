@@ -36,18 +36,20 @@ export default function Scoring() {
   useEffect(() => onQueueChange(() => setQueueVersion((n) => n + 1)), []);
 
   // Optimistic layer: server totals + taps still sitting in the local queue.
-  const { totalsByPlayer, extraScore, pendingCount } = useMemo(() => {
+  // Player totals accumulate "little" points; the match score accumulates
+  // each action's "big" team points.
+  const { totalsByPlayer, extraTeamScore, pendingCount } = useMemo(() => {
     const totals = new Map<number, number>();
     for (const t of data?.totals ?? []) totals.set(t.player_id, t.total);
     const queued = pendingForMatch(matchId);
     const actionById = new Map((actions ?? []).map((a) => [a.id, a]));
-    const extra = new Map<number, number>();
+    const extraTeam = new Map<number, number>();
     for (const tap of queued) {
-      const pts = actionById.get(tap.action_id)?.points ?? 0;
-      totals.set(tap.player_id, (totals.get(tap.player_id) ?? 0) + pts);
-      extra.set(tap.player_id, (extra.get(tap.player_id) ?? 0) + pts);
+      const action = actionById.get(tap.action_id);
+      totals.set(tap.player_id, (totals.get(tap.player_id) ?? 0) + (action?.points ?? 0));
+      extraTeam.set(tap.player_id, (extraTeam.get(tap.player_id) ?? 0) + (action?.team_points ?? 0));
     }
-    return { totalsByPlayer: totals, extraScore: extra, pendingCount: queued.length };
+    return { totalsByPlayer: totals, extraTeamScore: extraTeam, pendingCount: queued.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, actions, matchId, queueVersion]);
 
@@ -63,7 +65,7 @@ export default function Scoring() {
     return captain ? `Team ${captain.name.split(' ')[0]}` : `Team ${t.label}`;
   };
   const teamScore = (t: TeamWithRoster, base: number) =>
-    base + t.players.reduce((sum, p) => sum + (extraScore.get(p.id) ?? 0), 0);
+    base + t.players.reduce((sum, p) => sum + (extraTeamScore.get(p.id) ?? 0), 0);
 
   const recordTap = (player: Player, action: Action) => {
     const client_id = crypto.randomUUID();
@@ -182,7 +184,7 @@ export default function Scoring() {
         </span>
         <span className="last-tap">
           {lastTap
-            ? <>Last: <b>{lastTap.player.name}</b> — {lastTap.action.label} ({lastTap.action.points > 0 ? '+' : ''}{lastTap.action.points})</>
+            ? <>Last: <b>{lastTap.player.name}</b> — {lastTap.action.label} ({lastTap.action.team_points > 0 ? '+' : ''}{lastTap.action.team_points} team · {lastTap.action.points > 0 ? '+' : ''}{lastTap.action.points} player)</>
             : 'Tap a player, then the action.'}
         </span>
         <button className="undo-btn" disabled={!lastTap} onClick={() => void undo()}>

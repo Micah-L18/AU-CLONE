@@ -20,7 +20,7 @@ function AdminInner() {
 
   const [newPlayer, setNewPlayer] = useState('');
   const [newPosition, setNewPosition] = useState<string>('');
-  const [newAction, setNewAction] = useState({ label: '', points: '' });
+  const [newAction, setNewAction] = useState({ label: '', points: '', teamPoints: '' });
   const [weekDate, setWeekDate] = useState(new Date().toISOString().slice(0, 10));
   const [toast, setToast] = useState<string | null>(null);
   const csvInput = useRef<HTMLInputElement>(null);
@@ -54,10 +54,13 @@ function AdminInner() {
 
   const addAction = async () => {
     const points = Number(newAction.points);
-    if (!newAction.label.trim() || Number.isNaN(points)) return say('label and points required');
+    const teamPoints = newAction.teamPoints === '' ? 0 : Number(newAction.teamPoints);
+    if (!newAction.label.trim() || Number.isNaN(points) || Number.isNaN(teamPoints)) {
+      return say('label and points required');
+    }
     try {
-      await api.createAction({ label: newAction.label.trim(), points });
-      setNewAction({ label: '', points: '' });
+      await api.createAction({ label: newAction.label.trim(), points, team_points: teamPoints });
+      setNewAction({ label: '', points: '', teamPoints: '' });
       void refreshActions();
       say('Action added');
     } catch (e) { fail(e); }
@@ -174,6 +177,12 @@ function AdminInner() {
 
         <div className="panel">
           <span className="tag">Actions & point values (fully tunable)</span>
+          <div className="admin-row" style={{ borderBottom: '2px solid var(--line)' }}>
+            <span style={{ flex: 1 }} />
+            <span className="tag" style={{ width: 90, textAlign: 'center' }}>Team pts</span>
+            <span className="tag" style={{ width: 90, textAlign: 'center' }}>Player pts</span>
+            <span style={{ width: 132 }} />
+          </div>
           {(actions ?? []).map((a) => (
             <div key={a.id} className={`admin-row ${a.active === 0 ? 'inactive' : ''}`}>
               <span style={{ flex: 1 }}>
@@ -181,12 +190,26 @@ function AdminInner() {
               </span>
               <input
                 type="number"
+                title="Team (big) points — count toward the match score"
+                defaultValue={a.team_points}
+                key={`${a.id}-team-${a.team_points}`}
+                onBlur={async (e) => {
+                  const v = Number(e.target.value);
+                  if (v !== a.team_points && !Number.isNaN(v)) {
+                    try { await api.updateAction(a.id, { team_points: v }); void refreshActions(); say(`${a.label} → ${v} team pts`); }
+                    catch (err) { fail(err); }
+                  }
+                }}
+              />
+              <input
+                type="number"
+                title="Player (little) points — count toward the individual leaderboard"
                 defaultValue={a.points}
                 key={`${a.id}-${a.points}`}
                 onBlur={async (e) => {
                   const v = Number(e.target.value);
                   if (v !== a.points && !Number.isNaN(v)) {
-                    try { await api.updateAction(a.id, { points: v }); void refreshActions(); say(`${a.label} → ${v} pts`); }
+                    try { await api.updateAction(a.id, { points: v }); void refreshActions(); say(`${a.label} → ${v} player pts`); }
                     catch (err) { fail(err); }
                   }
                 }}
@@ -217,7 +240,9 @@ function AdminInner() {
             <input placeholder="Label (e.g. Serve Streak)" value={newAction.label}
               onChange={(e) => setNewAction({ ...newAction, label: e.target.value })}
               onKeyDown={(e) => e.key === 'Enter' && void addAction()} />
-            <input placeholder="pts" type="number" style={{ maxWidth: 90 }} value={newAction.points}
+            <input placeholder="team pts" type="number" style={{ maxWidth: 100 }} value={newAction.teamPoints}
+              onChange={(e) => setNewAction({ ...newAction, teamPoints: e.target.value })} />
+            <input placeholder="player pts" type="number" style={{ maxWidth: 100 }} value={newAction.points}
               onChange={(e) => setNewAction({ ...newAction, points: e.target.value })} />
             <button className="btn btn-ghost" onClick={() => void addAction()}>Add</button>
           </div>

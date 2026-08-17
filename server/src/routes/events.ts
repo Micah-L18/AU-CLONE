@@ -37,7 +37,7 @@ export function matchEventsRouter(db: DB): Router {
     if (existing) return res.status(200).json(existing);
 
     const action = db.prepare('SELECT * FROM actions WHERE id = ?').get(action_id) as
-      | { id: number; points: number; active: number }
+      | { id: number; points: number; team_points: number; active: number }
       | undefined;
     if (!action) return res.status(400).json({ error: 'unknown action' });
     if (action.active !== 1) return res.status(400).json({ error: 'action is inactive' });
@@ -46,10 +46,10 @@ export function matchEventsRouter(db: DB): Router {
 
     const info = db
       .prepare(
-        `INSERT INTO events (match_id, player_id, action_id, points, device, client_id)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO events (match_id, player_id, action_id, points, team_points, device, client_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(match.id, player_id, action.id, action.points, device ?? null, client_id);
+      .run(match.id, player_id, action.id, action.points, action.team_points, device ?? null, client_id);
     res.status(201).json(db.prepare('SELECT * FROM events WHERE id = ?').get(info.lastInsertRowid));
   });
 

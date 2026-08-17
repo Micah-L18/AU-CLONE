@@ -55,7 +55,8 @@ export interface Action {
   id: number;
   code: string;
   label: string;
-  points: number;
+  points: number; // "little points" — credited to the player who did it
+  team_points: number; // "big points" — credited to the team's match score
   sort_order: number;
   active: number; // 1 | 0
   system: number; // 1 = built-in (e.g. 'win'), cannot be deleted
@@ -67,6 +68,7 @@ export interface ScoringEvent {
   player_id: number;
   action_id: number;
   points: number; // snapshot of action.points at tap time
+  team_points: number; // snapshot of action.team_points at tap time
   created_at: string;
   device: string | null;
   client_id: string | null;

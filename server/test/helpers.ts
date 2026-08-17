@@ -15,10 +15,13 @@ export function makeApp(): TestContext {
 
 /** Create 45 players, a week with 5 teams of 9, and the generated schedule. */
 export async function seedLeague(ctx: TestContext) {
+  // Players go straight into the db — one HTTP round-trip per player makes
+  // the suite slow and can flake supertest's per-request listeners.
+  const insertPlayer = ctx.db.prepare('INSERT INTO players (name) VALUES (?)');
   const playerIds: number[] = [];
   for (let i = 1; i <= 45; i++) {
-    const res = await request(ctx.app).post('/api/players').send({ name: `Player ${String(i).padStart(2, '0')}` });
-    playerIds.push(res.body.id);
+    const info = insertPlayer.run(`Player ${String(i).padStart(2, '0')}`);
+    playerIds.push(Number(info.lastInsertRowid));
   }
   const weekRes = await request(ctx.app).post('/api/weeks').send({ week_number: 1, date: '2026-08-13' });
   const week = weekRes.body.week;

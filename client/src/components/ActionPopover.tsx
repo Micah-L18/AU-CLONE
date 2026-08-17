@@ -7,6 +7,8 @@ interface Props {
   onClose: () => void;
 }
 
+const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
 /** Player-first flow: the player was tapped, now say what they did. */
 export default function ActionPopover({ player, actions, onPick, onClose }: Props) {
   return (
@@ -19,7 +21,9 @@ export default function ActionPopover({ player, actions, onPick, onClose }: Prop
             .map((a) => (
               <button key={a.id} className={`action-btn ${a.points < 0 ? 'negative' : ''}`} onClick={() => onPick(a)}>
                 <span className="alabel">{a.label}</span>
-                <span className="apts">{a.points > 0 ? `+${a.points}` : a.points} pts</span>
+                <span className="apts">
+                  {fmt(a.team_points)} team · {fmt(a.points)} player
+                </span>
               </button>
             ))}
         </div>

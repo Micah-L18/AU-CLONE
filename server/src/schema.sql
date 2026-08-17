@@ -49,26 +49,28 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 
 CREATE TABLE IF NOT EXISTS actions (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  code       TEXT NOT NULL UNIQUE,
-  label      TEXT NOT NULL,
-  points     REAL NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  active     INTEGER NOT NULL DEFAULT 1,
-  system     INTEGER NOT NULL DEFAULT 0
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  code        TEXT NOT NULL UNIQUE,
+  label       TEXT NOT NULL,
+  points      REAL NOT NULL,               -- player ("little") points
+  team_points REAL NOT NULL DEFAULT 0,     -- team ("big") points
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  active      INTEGER NOT NULL DEFAULT 1,
+  system      INTEGER NOT NULL DEFAULT 0
 );
 
 -- The source of truth for ALL scoring. points is a snapshot of
 -- actions.points at insert time so retuning never rewrites history.
 CREATE TABLE IF NOT EXISTS events (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  match_id   INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-  player_id  INTEGER NOT NULL REFERENCES players(id),
-  action_id  INTEGER NOT NULL REFERENCES actions(id),
-  points     REAL NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  device     TEXT,
-  client_id  TEXT UNIQUE
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id    INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  player_id   INTEGER NOT NULL REFERENCES players(id),
+  action_id   INTEGER NOT NULL REFERENCES actions(id),
+  points      REAL NOT NULL,
+  team_points REAL NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  device      TEXT,
+  client_id   TEXT UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS settings (

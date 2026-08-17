@@ -35,7 +35,7 @@ function teamWithRoster(db: DB, teamId: number) {
 export function applyWinBonus(db: DB, match: MatchRow, winnerTeamId: number | null): void {
   const winAction = db
     .prepare(`SELECT * FROM actions WHERE code = 'win'`)
-    .get() as { id: number; points: number; active: number } | undefined;
+    .get() as { id: number; points: number; team_points: number; active: number } | undefined;
   if (!winAction) return;
 
   db.prepare('DELETE FROM events WHERE match_id = ? AND action_id = ?').run(match.id, winAction.id);
@@ -45,10 +45,12 @@ export function applyWinBonus(db: DB, match: MatchRow, winnerTeamId: number | nu
     .prepare('SELECT player_id FROM rosters WHERE week_team_id = ?')
     .all(winnerTeamId) as { player_id: number }[];
   const insert = db.prepare(
-    `INSERT INTO events (match_id, player_id, action_id, points, device)
-     VALUES (?, ?, ?, ?, 'system')`
+    `INSERT INTO events (match_id, player_id, action_id, points, team_points, device)
+     VALUES (?, ?, ?, ?, ?, 'system')`
   );
-  for (const r of roster) insert.run(match.id, r.player_id, winAction.id, winAction.points);
+  for (const r of roster) {
+    insert.run(match.id, r.player_id, winAction.id, winAction.points, winAction.team_points);
+  }
 }
 
 export function matchesRouter(db: DB): Router {
@@ -67,10 +69,11 @@ export function matchesRouter(db: DB): Router {
       )
       .all(match.id) as { player_id: number; total: number; event_count: number }[];
 
+    // Match score is "big" team points; player leaderboards use e.points.
     const scoreFor = (teamId: number) => {
       const row = db
         .prepare(
-          `SELECT COALESCE(SUM(e.points), 0) AS score
+          `SELECT COALESCE(SUM(e.team_points), 0) AS score
            FROM events e
            JOIN rosters r ON r.player_id = e.player_id AND r.week_team_id = ?
            WHERE e.match_id = ?`
