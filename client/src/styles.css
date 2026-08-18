@@ -161,6 +161,15 @@ a { color: inherit; text-decoration: none; }
 }
 .score-team.home .pts { color: var(--home); }
 .score-team.away .pts { color: var(--away); text-shadow: 0 0 24px rgba(76, 201, 240, 0.35); }
+.plus-btn {
+  margin-top: 8px; min-width: 110px; min-height: 56px;
+  font-family: var(--display); font-size: 30px; font-weight: 800; letter-spacing: 1px;
+  border-radius: 12px; background: var(--home); color: var(--court);
+  transition: transform 0.05s ease;
+}
+.plus-btn:active { transform: scale(0.94); }
+.plus-btn.away { background: var(--away); }
+.plus-btn:disabled { opacity: 0.3; }
 .score-mid { text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .clock {
   font-family: var(--display); font-weight: 800; font-size: 40px;

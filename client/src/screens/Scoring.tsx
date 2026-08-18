@@ -16,8 +16,8 @@ import { useEffect } from 'react';
 
 interface UndoEntry {
   client_id: string;
-  player: Player;
-  action: Action;
+  kind: 'action' | 'score';
+  label: string;
 }
 
 export default function Scoring() {
@@ -33,12 +33,22 @@ export default function Scoring() {
   const [pickingWinner, setPickingWinner] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
 
-  useEffect(() => onQueueChange(() => setQueueVersion((n) => n + 1)), []);
+  // Queue changes fire on enqueue AND after a sync completes — refreshing then
+  // closes the gap where a tap has left the queue but the next poll hasn't
+  // landed yet (otherwise the optimistic bump blinks away for a beat).
+  useEffect(
+    () =>
+      onQueueChange(() => {
+        setQueueVersion((n) => n + 1);
+        void refresh();
+      }),
+    [refresh]
+  );
 
-  // Optimistic layer: server totals + taps still sitting in the local queue.
-  // The earner banks the action's player points, every roster teammate banks
-  // the team points, and the match score accumulates team points once per tap.
-  const { totalsByPlayer, extraTeamScore, pendingCount } = useMemo(() => {
+  // Optimistic layer: server state + taps still sitting in the local queue.
+  // Action taps: the earner banks player points, roster teammates bank team
+  // points. Score taps: +1 on the tapped team's rally score.
+  const { totalsByPlayer, extraScoreByTeam, pendingCount } = useMemo(() => {
     const totals = new Map<number, number>();
     for (const t of data?.totals ?? []) totals.set(t.player_id, t.total);
     const teammates = new Map<number, number[]>();
@@ -49,8 +59,15 @@ export default function Scoring() {
     }
     const queued = pendingForMatch(matchId);
     const actionById = new Map((actions ?? []).map((a) => [a.id, a]));
-    const extraTeam = new Map<number, number>();
+    const extraScore = new Map<number, number>();
     for (const tap of queued) {
+      if (tap.kind === 'score') {
+        if (tap.team_id !== undefined) {
+          extraScore.set(tap.team_id, (extraScore.get(tap.team_id) ?? 0) + (tap.delta ?? 1));
+        }
+        continue;
+      }
+      if (tap.player_id === undefined || tap.action_id === undefined) continue;
       const action = actionById.get(tap.action_id);
       totals.set(tap.player_id, (totals.get(tap.player_id) ?? 0) + (action?.points ?? 0));
       const teamPts = action?.team_points ?? 0;
@@ -59,9 +76,8 @@ export default function Scoring() {
           totals.set(mate, (totals.get(mate) ?? 0) + teamPts);
         }
       }
-      extraTeam.set(tap.player_id, (extraTeam.get(tap.player_id) ?? 0) + teamPts);
     }
-    return { totalsByPlayer: totals, extraTeamScore: extraTeam, pendingCount: queued.length };
+    return { totalsByPlayer: totals, extraScoreByTeam: extraScore, pendingCount: queued.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, actions, matchId, queueVersion]);
 
@@ -76,14 +92,27 @@ export default function Scoring() {
     const captain = t.players.find((p) => p.id === t.captain_id);
     return captain ? `Team ${captain.name.split(' ')[0]}` : `Team ${t.label}`;
   };
-  const teamScore = (t: TeamWithRoster, base: number) =>
-    base + t.players.reduce((sum, p) => sum + (extraTeamScore.get(p.id) ?? 0), 0);
+  const teamScore = (t: TeamWithRoster, base: number) => base + (extraScoreByTeam.get(t.id) ?? 0);
 
   const recordTap = (player: Player, action: Action) => {
     const client_id = crypto.randomUUID();
-    enqueueTap({ client_id, match_id: match.id, player_id: player.id, action_id: action.id });
-    setUndoStack((s) => [...s, { client_id, player, action }]);
+    enqueueTap({ client_id, match_id: match.id, kind: 'action', player_id: player.id, action_id: action.id });
+    const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+    setUndoStack((s) => [
+      ...s,
+      {
+        client_id,
+        kind: 'action',
+        label: `${player.name} — ${action.label} (${fmt(action.points)} · ${fmt(action.team_points)} each teammate)`,
+      },
+    ]);
     setTappedPlayer(null);
+  };
+
+  const recordPoint = (team: TeamWithRoster) => {
+    const client_id = crypto.randomUUID();
+    enqueueTap({ client_id, match_id: match.id, kind: 'score', team_id: team.id, delta: 1 });
+    setUndoStack((s) => [...s, { client_id, kind: 'score', label: `${teamName(team)} +1 point` }]);
   };
 
   const undo = async () => {
@@ -93,7 +122,8 @@ export default function Scoring() {
     if (!removeQueued(last.client_id)) {
       const serverId = serverIdFor(last.client_id);
       if (serverId !== undefined) {
-        await api.deleteEvent(serverId).catch(() => {});
+        if (last.kind === 'score') await api.deleteScoreTap(serverId).catch(() => {});
+        else await api.deleteEvent(serverId).catch(() => {});
       }
     }
     void refresh();
@@ -123,6 +153,9 @@ export default function Scoring() {
         <div className="score-team home">
           <div className="name">{teamName(home)}</div>
           <div className="pts digits">{teamScore(home, data.home_score)}</div>
+          <button className="plus-btn" disabled={match.status === 'final'} onClick={() => recordPoint(home)}>
+            +1
+          </button>
         </div>
         <div className="score-mid">
           <Timer startedAt={match.started_at} durationMinutes={durationMinutes} />
@@ -139,6 +172,9 @@ export default function Scoring() {
         <div className="score-team away">
           <div className="name">{teamName(away)}</div>
           <div className="pts digits">{teamScore(away, data.away_score)}</div>
+          <button className="plus-btn away" disabled={match.status === 'final'} onClick={() => recordPoint(away)}>
+            +1
+          </button>
         </div>
       </div>
 
@@ -196,8 +232,8 @@ export default function Scoring() {
         </span>
         <span className="last-tap">
           {lastTap
-            ? <>Last: <b>{lastTap.player.name}</b> — {lastTap.action.label} ({lastTap.action.points > 0 ? '+' : ''}{lastTap.action.points} · {lastTap.action.team_points > 0 ? '+' : ''}{lastTap.action.team_points} each teammate)</>
-            : 'Tap a player, then the action.'}
+            ? <>Last: <b>{lastTap.label}</b></>
+            : '+1 for the rally score · tap a player for their stats.'}
         </span>
         <button className="undo-btn" disabled={!lastTap} onClick={() => void undo()}>
           ⟲ Undo

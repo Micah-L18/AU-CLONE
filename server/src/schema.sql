@@ -73,6 +73,17 @@ CREATE TABLE IF NOT EXISTS events (
   client_id   TEXT UNIQUE
 );
 
+-- The rally score: one row per +1 (or correction) tapped on the scoreboard.
+-- A match's displayed score is SUM(delta) per team.
+CREATE TABLE IF NOT EXISTS score_taps (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id   INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  team_id    INTEGER NOT NULL REFERENCES week_teams(id),
+  delta      REAL NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  client_id  TEXT UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -82,3 +93,4 @@ CREATE INDEX IF NOT EXISTS idx_events_match  ON events(match_id);
 CREATE INDEX IF NOT EXISTS idx_events_player ON events(player_id);
 CREATE INDEX IF NOT EXISTS idx_rosters_team  ON rosters(week_team_id);
 CREATE INDEX IF NOT EXISTS idx_matches_week  ON matches(week_id);
+CREATE INDEX IF NOT EXISTS idx_score_taps_match ON score_taps(match_id);

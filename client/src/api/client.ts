@@ -53,6 +53,7 @@ export const api = {
   patchMatch: (id: number, body: { status?: string; winner_team_id?: number | null }) =>
     http(`/api/matches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteEvent: (id: number) => http(`/api/events/${id}`, { method: 'DELETE' }),
+  deleteScoreTap: (id: number) => http(`/api/score-taps/${id}`, { method: 'DELETE' }),
   matchEvents: (matchId: number) => http<ScoringEvent[]>(`/api/matches/${matchId}/events`),
 
   actions: (all = false) => http<Action[]>(`/api/actions${all ? '?all=1' : ''}`),

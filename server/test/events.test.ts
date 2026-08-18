@@ -54,7 +54,7 @@ describe('event scoring', () => {
     expect(res.body.points).toBe(8);
 
     const detail = await request(f.ctx.app).get(`/api/matches/${f.matchId}`);
-    expect(detail.body.home_score).toBe(2); // match score counts team points once
+    expect(detail.body.home_score).toBe(0); // rally score is manual, not action-driven
     expect(detail.body.away_score).toBe(0);
     const totals = detail.body.totals as { player_id: number; total: number; event_count: number }[];
     const earner = totals.find((t) => t.player_id === f.homePlayerIds[0]);
@@ -98,6 +98,48 @@ describe('event scoring', () => {
       .post(`/api/matches/${f.matchId}/events`)
       .send({ player_id: f.homePlayerIds[0], action_id: f.killActionId, client_id: 'x-1' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('rally score (+1 taps)', () => {
+  let f: Fixture;
+  beforeEach(async () => {
+    f = await fixture();
+  });
+
+  it('increments per team, idempotent on client_id', async () => {
+    const first = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/score`)
+      .send({ team_id: f.homeTeamId, client_id: 'pt-1' });
+    expect(first.status).toBe(201);
+    await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/score`)
+      .send({ team_id: f.homeTeamId, client_id: 'pt-2' });
+    // offline retry of pt-1 must not double-count
+    const dup = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/score`)
+      .send({ team_id: f.homeTeamId, client_id: 'pt-1' });
+    expect(dup.status).toBe(200);
+
+    const detail = await request(f.ctx.app).get(`/api/matches/${f.matchId}`);
+    expect(detail.body.home_score).toBe(2);
+    expect(detail.body.away_score).toBe(0);
+    // rally points never touch player totals
+    expect(detail.body.totals).toEqual([]);
+  });
+
+  it('supports undo via delete and rejects foreign teams', async () => {
+    const tap = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/score`)
+      .send({ team_id: f.homeTeamId, client_id: 'pt-undo' });
+    await request(f.ctx.app).delete(`/api/score-taps/${tap.body.id}`);
+    const detail = await request(f.ctx.app).get(`/api/matches/${f.matchId}`);
+    expect(detail.body.home_score).toBe(0);
+
+    const bad = await request(f.ctx.app)
+      .post(`/api/matches/${f.matchId}/score`)
+      .send({ team_id: 99999, client_id: 'pt-bad' });
+    expect(bad.status).toBe(400);
   });
 });
 

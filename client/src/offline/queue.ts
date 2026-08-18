@@ -8,8 +8,13 @@ import type { ScoringEvent } from '@shared/types';
 export interface QueuedTap {
   client_id: string;
   match_id: number;
-  player_id: number;
-  action_id: number;
+  kind?: 'action' | 'score'; // absent = 'action' (pre-score-tap queues)
+  // action taps
+  player_id?: number;
+  action_id?: number;
+  // score taps (+1 on the scoreboard)
+  team_id?: number;
+  delta?: number;
   device?: string;
 }
 
@@ -83,16 +88,27 @@ export async function flush(): Promise<void> {
       const queue = load();
       const tap = queue[0];
       if (!tap) break;
-      const res = await fetch(`/api/matches/${tap.match_id}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          player_id: tap.player_id,
-          action_id: tap.action_id,
-          client_id: tap.client_id,
-          device: tap.device,
-        }),
-      });
+      const res =
+        tap.kind === 'score'
+          ? await fetch(`/api/matches/${tap.match_id}/score`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                team_id: tap.team_id,
+                delta: tap.delta ?? 1,
+                client_id: tap.client_id,
+              }),
+            })
+          : await fetch(`/api/matches/${tap.match_id}/events`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                player_id: tap.player_id,
+                action_id: tap.action_id,
+                client_id: tap.client_id,
+                device: tap.device,
+              }),
+            });
       if (res.status === 400 || res.status === 404) {
         // Permanently rejected (deleted player/action/match) — drop it so the
         // queue can't wedge.
@@ -100,8 +116,8 @@ export async function flush(): Promise<void> {
       } else if (!res.ok) {
         break; // transient — leave at head of queue and retry later
       } else {
-        const event = (await res.json()) as ScoringEvent;
-        serverIds.set(tap.client_id, event.id);
+        const created = (await res.json()) as ScoringEvent | { id: number };
+        serverIds.set(tap.client_id, created.id);
       }
       removeQueued(tap.client_id);
     }
