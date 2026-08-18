@@ -24,6 +24,27 @@ Open http://localhost:5173 and:
 npm test            # server test suite (schedule, events, win bonus, leaderboard)
 ```
 
+## Deploy with Docker
+
+One container serves the API and the built app on port 3001; the SQLite
+database lives on a named volume so upgrades keep league history.
+
+```bash
+docker compose up -d --build
+# app at http://<host>:3001
+```
+
+Or without compose:
+
+```bash
+docker build -t sideout .
+docker run -d -p 3001:3001 -v sideout-data:/data --restart unless-stopped sideout
+```
+
+To migrate an existing local league into the container, copy it onto the
+volume before first start:
+`docker run --rm -v sideout-data:/data -v "$PWD/server":/src alpine cp /src/league.db /data/league.db`
+
 ## How scoring works
 
 - The `events` table is the **single source of truth**. One tap = one row: `(match, player, action, points)`.
